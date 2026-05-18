@@ -1,0 +1,5 @@
+CLAUDE.md
+.claude/
+OASA-Telematics/
+__pycache__/
+*.pyc

@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>OASA Display</title>
+  <style>
+    @font-face {
+      font-family: 'VT323';
+      src: url('/static/VT323.woff2') format('woff2');
+      font-display: block;
+    }
+  </style>
+  <style>
+    :root {
+      --amber: #f5c400;
+      --amber-dim: #7a6100;
+      --amber-glow: rgba(245, 196, 0, 0.25);
+      --bg: #050500;
+      --row-border: #1a1600;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--amber);
+      font-family: 'VT323', 'Courier New', monospace;
+      overflow: hidden;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right)
+               env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    /* ── scanline overlay ── */
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(0, 0, 0, 0.08) 3px,
+        rgba(0, 0, 0, 0.08) 4px
+      );
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    /* ── header ── */
+    #header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 2vw 3vw 1vw;
+      border-bottom: 2px solid var(--amber-dim);
+      flex-shrink: 0;
+    }
+
+    #stop-name {
+      font-size: clamp(1.4rem, 5vw, 3.2rem);
+      text-shadow: 0 0 12px var(--amber), 0 0 24px var(--amber-glow);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    #updated-at {
+      font-size: clamp(0.9rem, 3vw, 1.8rem);
+      color: var(--amber-dim);
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    /* ── column headers ── */
+    #col-headers {
+      display: grid;
+      grid-template-columns: 1fr 3fr 1fr;
+      padding: 1vw 3vw;
+      border-bottom: 1px solid var(--amber-dim);
+      color: var(--amber-dim);
+      font-size: clamp(0.8rem, 2.5vw, 1.4rem);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    #col-headers span:last-child { text-align: right; }
+
+    /* ── arrivals list ── */
+    #arrivals {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .arrival-row {
+      display: grid;
+      grid-template-columns: 1fr 3fr 1fr;
+      align-items: center;
+      padding: 0 3vw;
+      border-bottom: 1px solid var(--row-border);
+      flex: 1;
+      min-height: 0;
+    }
+
+    .arrival-row:last-child { border-bottom: none; }
+
+    .line-num {
+      font-size: clamp(2rem, 8vw, 6rem);
+      text-shadow: 0 0 14px var(--amber), 0 0 30px var(--amber-glow);
+      letter-spacing: 0.04em;
+    }
+
+    .destination {
+      font-size: clamp(1rem, 4vw, 3rem);
+      text-shadow: 0 0 8px var(--amber-glow);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0 2vw;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .minutes {
+      text-align: right;
+      font-size: clamp(2.4rem, 10vw, 7rem);
+      text-shadow: 0 0 18px var(--amber), 0 0 40px var(--amber-glow);
+      letter-spacing: -0.02em;
+    }
+
+    .minutes .unit {
+      font-size: 0.4em;
+      color: var(--amber-dim);
+      margin-left: 0.1em;
+    }
+
+    /* arriving now */
+    .arrival-row.now .minutes { color: #fff; text-shadow: 0 0 20px #fff, 0 0 40px var(--amber); }
+    .arrival-row.now .line-num { color: #fff; text-shadow: 0 0 20px #fff, 0 0 40px var(--amber); }
+
+    /* ── empty / error states ── */
+    #empty-state {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(1.2rem, 5vw, 2.5rem);
+      color: var(--amber-dim);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* ── footer ── */
+    #footer {
+      flex-shrink: 0;
+      text-align: center;
+      padding: 1vw;
+      font-size: clamp(0.6rem, 1.8vw, 1rem);
+      color: var(--amber-dim);
+      letter-spacing: 0.08em;
+      border-top: 1px solid var(--row-border);
+    }
+
+    /* blink dot on stale data */
+    @keyframes blink { 50% { opacity: 0; } }
+    .stale { animation: blink 1s step-start infinite; }
+
+    /* ── portrait layout ── */
+    @media (orientation: portrait) {
+      #col-headers { display: none; }
+
+      #header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0;
+        padding: 3vw 5vw 2vw;
+      }
+
+      #stop-name {
+        font-size: clamp(1.8rem, 7vw, 3.8rem);
+      }
+
+      #updated-at {
+        font-size: clamp(1rem, 4vw, 2rem);
+      }
+
+      .arrival-row {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 3vw 5vw;
+      }
+
+      .line-num {
+        font-size: clamp(3.5rem, 14vw, 7.5rem);
+        line-height: 1;
+      }
+
+      .destination {
+        font-size: clamp(2rem, 8.5vw, 4.5rem);
+        padding: 0;
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        width: 100%;
+      }
+
+      .minutes {
+        font-size: clamp(5rem, 28vw, 18rem);
+        text-align: right;
+        line-height: 1;
+      }
+
+      .minutes .unit {
+        font-size: 0.3em;
+      }
+
+      #footer {
+        font-size: clamp(0.8rem, 2.8vw, 1.3rem);
+        padding: 2vw;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <span id="stop-name">—</span>
+    <span id="updated-at">—</span>
+  </div>
+
+  <div id="col-headers">
+    <span>ΓΡΑΜΜΗ</span>
+    <span>ΠΡΟΟΡΙΣΜΟΣ</span>
+    <span style="text-align:right">ΛΕΠΤΑ</span>
+  </div>
+
+  <div id="arrivals"></div>
+
+  <div id="footer" id="footer-status"></div>
+
+  <script>
+    const POLL_MS = 30_000;
+    let lastUpdated = null;
+
+    async function refresh() {
+      try {
+        const res = await fetch('/api/arrivals');
+        const data = await res.json();
+
+        document.getElementById('stop-name').textContent =
+          data.stop_name || '—';
+
+        const updatedEl = document.getElementById('updated-at');
+        if (data.updated_at) {
+          lastUpdated = data.updated_at;
+          updatedEl.textContent = data.updated_at;
+          updatedEl.classList.remove('stale');
+        } else {
+          updatedEl.classList.add('stale');
+        }
+
+        const container = document.getElementById('arrivals');
+        container.innerHTML = '';
+
+        if (!data.arrivals || data.arrivals.length === 0) {
+          const msg = document.createElement('div');
+          msg.id = 'empty-state';
+          msg.textContent = data.error
+            ? 'ΣΦΑΛΜΑ ΣΥΝΔΕΣΗΣ'
+            : 'ΔΕΝ ΥΠΑΡΧΟΥΝ ΔΡΟΜΟΛΟΓΙΑ';
+          container.appendChild(msg);
+        } else {
+          data.arrivals.forEach(a => {
+            const row = document.createElement('div');
+            row.className = 'arrival-row' + (a.minutes <= 1 ? ' now' : '');
+
+            const lineNum = document.createElement('span');
+            lineNum.className = 'line-num';
+            lineNum.textContent = a.line_id;
+
+            const dest = document.createElement('span');
+            dest.className = 'destination';
+            dest.textContent = a.destination;
+
+            const mins = document.createElement('span');
+            mins.className = 'minutes';
+            if (a.minutes <= 1) {
+              mins.innerHTML = 'ΤΩΡΑ';
+            } else {
+              mins.innerHTML = `${a.minutes}<span class="unit">λ</span>`;
+            }
+
+            row.appendChild(lineNum);
+            row.appendChild(dest);
+            row.appendChild(mins);
+            container.appendChild(row);
+          });
+        }
+
+        document.getElementById('footer').textContent =
+          data.error ? `⚠ ${data.error}` : '';
+
+      } catch (e) {
+        document.getElementById('footer').textContent = `⚠ ${e.message}`;
+      }
+    }
+
+    refresh();
+    setInterval(refresh, POLL_MS);
+
+    // Keep screen awake (where supported)
+    if ('wakeLock' in navigator) {
+      navigator.wakeLock.request('screen').catch(() => {});
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          navigator.wakeLock.request('screen').catch(() => {});
+        }
+      });
+    }
+  </script>
+</body>
+</html>
