@@ -1,14 +1,10 @@
 # My OASA Bus Stop
 
-A real-time Athens bus arrival display for a Raspberry Pi. Polls the [OASA Telematics](https://telematics.oasa.gr) API and serves a fullscreen arrival board designed to sit on a phone or tablet in the kitchen.
+My girlfriend takes the same bus each morning to work. As she gets ready, she has to check the OASA Telematics app on her phone every few minutes to see when the bus will come. Using the [OASA Telematics](https://telematics.oasa.gr) API I've created this simple service to run on our Raspberry Pi so we can use an old phone in our kitchen to have a permament display of the bus stop arrival times. 
 
-![Amber LED-style arrival board](.github/preview.png)
+<img width="166" height="300" alt="OASA Display" src="https://github.com/user-attachments/assets/36d98718-fdb5-4d45-b397-446935661df3" />
 
-## What it looks like
 
-Black background, amber text, dot-matrix VT323 font, CRT scanline overlay. Landscape mode shows a classic three-column departure board (line · destination · minutes). Portrait mode stacks each arrival as a card with the countdown in large type at the bottom.
-
-When a bus is ≤1 minute away the row turns white and shows **ΤΩΡΑ** (now).
 
 ## How it works
 
@@ -39,46 +35,6 @@ python3 server.py
 
 No dependencies beyond the Python standard library.
 
-## Running on a Raspberry Pi (systemd + nginx)
-
-Create `/etc/systemd/system/oasa-display.service`:
-
-```ini
-[Unit]
-Description=OASA Bus Display
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-User=dimitris
-WorkingDirectory=/home/dimitris/oasa
-ExecStart=/usr/bin/python3 /home/dimitris/oasa/server.py
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start:
-
-```bash
-sudo systemctl enable --now oasa-display
-```
-
-Then proxy it through nginx so it's reachable by IP on port 80:
-
-```nginx
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
-    location / {
-        proxy_pass http://127.0.0.1:8888;
-    }
-}
-```
-
 ## OASA API
 
 Base URL: `https://telematics.oasa.gr/api/`
@@ -90,7 +46,3 @@ Base URL: `https://telematics.oasa.gr/api/`
 | `getStopNameAndXY` | `p1=stop_code` | Stop name and coordinates |
 
 No authentication required.
-
-## License
-
-MIT
