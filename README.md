@@ -10,21 +10,21 @@ My girlfriend takes the same bus each morning to work. As she gets ready, she ha
 
 `server.py` runs two things concurrently:
 
-- **Poller thread** — fetches arrivals from the OASA API every 60 seconds and stores the result in a shared state dict
+- **Poller thread** — fetches arrivals for every configured stop from the OASA API every 60 seconds and stores the result in a shared state dict
 - **HTTP server** — serves `display.html` and a `/api/arrivals` JSON endpoint on `127.0.0.1:8888`
 
-The browser polls `/api/arrivals` every 30 seconds and updates the DOM in place. No frameworks, no build step, no external dependencies — the VT323 font is self-hosted.
+The browser polls `/api/arrivals` every 30 seconds and redraws the board in place. Each stop gets its own labelled section, and the layout scales to fit the screen however many buses are showing, so it never needs scrolling. No frameworks, no build step, no external dependencies — the VT323 font is self-hosted.
 
 ## Configuration
 
 Open `server.py` and change the constants at the top:
 
 ```python
-STOP_CODE = "060502"   # OASA stop code — find yours via the API or the OASA app
-PORT      = 8888
+STOP_CODES = ["060502", "060545", "060642"]  # OASA stop codes, shown top to bottom
+PORT       = 8888
 ```
 
-To find your stop code, look it up on [telematics.oasa.gr](https://telematics.oasa.gr) or use the `getStopNameAndXY` API action.
+Add as many stops as will fit legibly on your screen. To find a stop code, look it up on [telematics.oasa.gr](https://telematics.oasa.gr) or use the `getStopNameAndXY` API action.
 
 ## Running locally
 
@@ -46,3 +46,5 @@ Base URL: `https://telematics.oasa.gr/api/`
 | `getStopNameAndXY` | `p1=stop_code` | Stop name and coordinates |
 
 No authentication required.
+
+`/api/arrivals` returns `{"stops": [{"code", "name", "arrivals": [{"line_id", "destination", "minutes"}], "error"}], "updated_at", "error"}`.
