@@ -94,25 +94,28 @@
       flex-direction: column;
     }
 
-    /* stop label bar: doubles as the column legend (same grid as the rows) */
+    /* stop label bar: solid amber "inverse video" strip so the stop name is
+       easy to pick out; doubles as the column legend (same grid as the rows) */
     .stop-label {
       display: grid;
       grid-template-columns: 1fr 3fr 1fr;
-      align-items: baseline;
-      padding: 0.3vh 2vw;
-      border-top: 1px solid var(--amber-dim);
-      border-bottom: 1px solid var(--amber-dim);
+      align-items: center;
+      padding: 0.4vh 2vw;
+      background: var(--amber);
+      color: var(--bg);
       flex-shrink: 0;
-      font-size: clamp(0.8rem, min(2.6vw, 2.4vh), 1.5rem);
-      letter-spacing: 0.1em;
+      font-size: clamp(1rem, min(3.6vw, 3.2vh), 2.2rem);
+      font-weight: bold;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
       white-space: nowrap;
     }
-    .stop-label .legend { color: var(--amber-dim); }
+    .stop-label .legend {
+      color: rgba(5, 5, 0, 0.6);
+      font-size: 0.7em;
+    }
     .stop-label .legend:last-child { text-align: right; }
     .stop-label .stop-name {
-      color: var(--amber);
-      text-shadow: 0 0 8px var(--amber-glow);
       padding: 0 2vw;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -244,12 +247,12 @@
       .minutes     { font-size: min(70cqh, 14cqw); }
       .minutes .unit { font-size: 0.35em; }
       .destination {
-        font-size: min(30cqh, 6cqw);
+        font-size: min(24cqh, 4.6cqw);
         line-height: 1.05;
         padding: 0 2vw;
         white-space: normal;
         display: -webkit-box;
-        -webkit-line-clamp: 2;
+        -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
       }
     }
