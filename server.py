@@ -13,7 +13,7 @@ import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-STOP_CODE = "060502"
+STOP_CODES = ["060502", "060545", "060642"]  # displayed top to bottom
 POLL_INTERVAL = 60  # seconds between OASA API polls
 PORT = 8888
 HOST = "127.0.0.1"  # only nginx should reach this directly
@@ -22,6 +22,7 @@ API_BASE = "https://telematics.oasa.gr/api/"
 # Shared state updated by the poller thread
 state_lock = threading.Lock()
 state = {
+    "stops": [],
     "arrivals": [],
     "stop_name": "",
     "updated_at": None,
@@ -63,50 +64,60 @@ def fetch_stop_name(stop_code):
     return stop_code
 
 
+def poll_stop(code, ctx):
+    """Poll one stop and return its arrivals. ctx holds cached static data."""
+    if not ctx.get("name"):
+        try:
+            ctx["name"] = fetch_stop_name(code)
+        except Exception as e:
+            print(f"stop name fetch failed for {code}: {e}", flush=True)
+    raw = oasa_get("getStopArrivals", code)
+    arrivals = []
+    if raw:
+        # Refresh static data if empty (earlier fetch failed) or if an
+        # arrival references a route we don't know about.
+        route_map = ctx.setdefault("routes", {})
+        if not route_map or any(a.get("route_code") not in route_map for a in raw):
+            try:
+                ctx["routes"] = route_map = build_route_map(code) or route_map
+            except Exception as e:
+                print(f"route map refresh failed for {code}: {e}", flush=True)
+        for a in raw:
+            rc = a.get("route_code", "")
+            info = route_map.get(rc, {})
+            arrivals.append({
+                "line_id": info.get("line_id", rc),
+                "destination": info.get("route_descr", ""),
+                "minutes": int(a.get("btime2", 0)),
+            })
+    arrivals.sort(key=lambda x: x["minutes"])
+    return arrivals
+
+
 def poll_loop():
-    global state
-
-    # Fetch static data once
-    try:
-        stop_name = fetch_stop_name(STOP_CODE)
-        route_map = build_route_map(STOP_CODE)
-    except Exception as e:
-        with state_lock:
-            state["error"] = f"Startup error: {e}"
-        stop_name = STOP_CODE
-        route_map = {}
-
-    with state_lock:
-        state["stop_name"] = stop_name
+    contexts = {code: {} for code in STOP_CODES}
+    stops = {code: {"code": code, "name": code, "arrivals": [], "error": None}
+             for code in STOP_CODES}
 
     while True:
-        try:
-            raw = oasa_get("getStopArrivals", STOP_CODE)
-            arrivals = []
-            if raw:
-                # Refresh static data if empty (startup fetch failed) or if
-                # an arrival references a route we don't know about.
-                if not route_map or any(a.get("route_code") not in route_map for a in raw):
-                    try:
-                        route_map = build_route_map(STOP_CODE) or route_map
-                    except Exception as e:
-                        print(f"route map refresh failed: {e}", flush=True)
-                for a in raw:
-                    rc = a.get("route_code", "")
-                    info = route_map.get(rc, {})
-                    arrivals.append({
-                        "line_id": info.get("line_id", rc),
-                        "destination": info.get("route_descr", ""),
-                        "minutes": int(a.get("btime2", 0)),
-                    })
-            arrivals.sort(key=lambda x: x["minutes"])
-            with state_lock:
-                state["arrivals"] = arrivals
-                state["updated_at"] = time.strftime("%H:%M")
-                state["error"] = None
-        except Exception as e:
-            with state_lock:
-                state["error"] = str(e)
+        for code in STOP_CODES:
+            ctx = contexts[code]
+            try:
+                stops[code]["arrivals"] = poll_stop(code, ctx)
+                stops[code]["error"] = None
+            except Exception as e:
+                stops[code]["error"] = str(e)
+            stops[code]["name"] = ctx.get("name") or code
+
+        ordered = [dict(stops[c]) for c in STOP_CODES]
+        errors = [x["error"] for x in ordered if x["error"]]
+        with state_lock:
+            state["stops"] = ordered
+            # Legacy fields: first stop only
+            state["arrivals"] = ordered[0]["arrivals"]
+            state["stop_name"] = ordered[0]["name"]
+            state["updated_at"] = time.strftime("%H:%M")
+            state["error"] = "; ".join(errors) if errors else None
 
         time.sleep(POLL_INTERVAL)
 
@@ -193,7 +204,7 @@ if __name__ == "__main__":
     poller.start()
 
     server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"Serving on http://{HOST}:{PORT}  (stop {STOP_CODE})")
+    print(f"Serving on http://{HOST}:{PORT}  (stops {", ".join(STOP_CODES)})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
