@@ -84,6 +84,13 @@ def poll_loop():
             raw = oasa_get("getStopArrivals", STOP_CODE)
             arrivals = []
             if raw:
+                # Refresh static data if empty (startup fetch failed) or if
+                # an arrival references a route we don't know about.
+                if not route_map or any(a.get("route_code") not in route_map for a in raw):
+                    try:
+                        route_map = build_route_map(STOP_CODE) or route_map
+                    except Exception as e:
+                        print(f"route map refresh failed: {e}", flush=True)
                 for a in raw:
                     rc = a.get("route_code", "")
                     info = route_map.get(rc, {})
@@ -115,6 +122,8 @@ class Handler(BaseHTTPRequestHandler):
             self._serve_file("display.html", "text/html; charset=utf-8")
         elif self.path == "/static/VT323.woff2":
             self._serve_file("static/VT323.woff2", "font/woff2")
+        elif self.path == "/static/nosleep.mp4":
+            self._serve_file("static/nosleep.mp4", "video/mp4")
         else:
             self.send_response(404)
             self.end_headers()
@@ -131,15 +140,52 @@ class Handler(BaseHTTPRequestHandler):
     def _serve_file(self, filename, content_type):
         path = os.path.join(os.path.dirname(__file__), filename)
         try:
-            with open(path, "rb") as f:
-                data = f.read()
-            self.send_response(200)
-            self.send_header("Content-Type", content_type)
-            self.end_headers()
-            self.wfile.write(data)
+            size = os.path.getsize(path)
         except FileNotFoundError:
             self.send_response(404)
             self.end_headers()
+            return
+
+        # iOS Safari requires 206 Partial Content responses to Range requests
+        # before it will play a video element.
+        range_header = self.headers.get("Range", "")
+        start, end = 0, size - 1
+        partial = False
+        if range_header.startswith("bytes="):
+            spec = range_header[6:].split(",", 1)[0].strip()
+            lo, _, hi = spec.partition("-")
+            try:
+                if lo:
+                    start = int(lo)
+                    end = int(hi) if hi else size - 1
+                else:
+                    start = size - int(hi)
+                    end = size - 1
+            except ValueError:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.end_headers()
+                return
+            if start < 0 or start >= size or end >= size or start > end:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.end_headers()
+                return
+            partial = True
+
+        length = end - start + 1
+        with open(path, "rb") as f:
+            f.seek(start)
+            data = f.read(length)
+
+        self.send_response(206 if partial else 200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(length))
+        self.send_header("Accept-Ranges", "bytes")
+        if partial:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.end_headers()
+        self.wfile.write(data)
 
 
 if __name__ == "__main__":
